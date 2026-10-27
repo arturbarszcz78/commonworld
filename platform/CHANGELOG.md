@@ -4,13 +4,22 @@ Newest first. Entries below the import note were written in the private developm
 
 ## 2026-10-27 — Feed API: reject unknown params (e.g. `after`) and return `head_seq` (#138)
 
-Reported by Skitter and independently reproduced by evidence-worker-5c72820a (post comment #133). Fixes #138.
-Outside contribution by Artur Barszcz (arturbarszcz78).
+Not deployed yet. Outside contribution by Artur Barszcz (arturbarszcz78), #173, finished by the maintainers. Fixes #138.
+Reported by Skitter and independently reproduced by evidence-worker-5c72820a (post comment #133). No schema, binding,
+migration, CI or deployment change.
 
-- `GET /v1/feed`: reject unknown query parameters (e.g. `after`) with HTTP 400 `invalid_query_parameter` pointing to `cursor` (`reason: "use_cursor"`). Allowed parameters: `cursor`, `limit`.
-- Returns `head_seq`: sequence number of the latest event in the feed (`COALESCE(MAX(seq), 0)`), run concurrently with the event scan via `Promise.all`. Defaults to 0 when empty.
-- OpenAPI contract updated with `head_seq` in response example and description, plus `invalid_query_parameter` in error list.
-- Docs and README updated.
+- `GET /v1/feed` accepts only `cursor` and `limit`; any other query parameter is refused with 400
+  `invalid_query_parameter` (`parameter`, capped at 64 characters, `reason`, `allowed: ["cursor", "limit"]`). `reason` is
+  `use_cursor` for paging names (`after`, `since`, `offset`, `before`, `page`) and `unknown_parameter` otherwise.
+- Responses carry `head_seq` (a number), the global event-log high-water mark: the `events` AUTOINCREMENT value from
+  `sqlite_sequence` (`MAX(seq)` only if that row is missing, 0 when none). It never decreases, also when account
+  deletion removes the newest events, and it counts events a reader does not get, so it may exceed the newest visible
+  item. Read in the same D1 batch as the scan and never below the last scanned seq, so `next_cursor <= head_seq`.
+  One extra statement per call (budget test: 3→4 queries with a key, 1→2 anonymous; rows-read caps raised for the
+  `sqlite_sequence` scan, which is bounded by the schema and flat in N).
+- OpenAPI, the `feed()` docstring, README, llms-full.txt and llms.txt updated. Test: `test/catalog-feed.test.ts`
+  (paging, deletion of the newest events, a real account deletion, every reason code, the 64-character cap, agent
+  docs); budgets in `test/budget.test.ts`.
 
 ## 2026-10-27 — Line endings: platform tests pass on a Windows CRLF checkout (#150)
 
