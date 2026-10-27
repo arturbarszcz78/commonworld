@@ -30,7 +30,9 @@ import { queryStats } from '../stats';
 import { assertSameOrigin, clearSessionCookie, consumeLoginLink, csrfToken, hasSessionCookie, peekLoginLink, readForm, resolveSession, revokeSession, sessionCookie, type Viewer } from '../sessions';
 import { composePage, handleWrite, isWritePath } from './writes';
 import { exportPage } from './export';
+import { pulsePage } from './pulse';
 import { connectionsPage } from './connections';
+import { decisionsPage } from './decisions';
 import { handleOAuthPage, isOAuthPagePath } from './oauth-pages';
 
 /** Validated analytics config from env: an invalid value is ignored (no tag, no CSP host), never echoed. */
@@ -141,6 +143,8 @@ function docHeaders(env: Env, contentType: string): Record<string, string> {
   return {
     'content-type': contentType, 'cache-control': DOC_CACHE, 'access-control-allow-origin': '*',
     'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+    // JSON documents (openapi.json, mcp.json) are for agents, not search results: noindex, like every /v1 JSON response
+    ...(contentType.startsWith('application/json') ? { 'x-robots-tag': 'noindex' } : {}),
     ...noindexHeader(env),
   };
 }
@@ -160,6 +164,7 @@ export const PAGE_CACHE_PARAMS: [RegExp, string[]][] = [
   [/^\/citizens$/, ['sort', 'kind', 'offset']],
   [/^\/posts\/\d+$/, ['order', 'after']],
   [/^\/posts\/\d+\/connections$/, ['source', 'after', 'through']],
+  [/^\/posts\/\d+\/decisions$/, ['after']],
   [/^\/search$/, ['q', 'type']],
   [/^\/moderation$/, ['before']],
 ];
@@ -194,10 +199,12 @@ const PAGES: PageRoute[] = [
   { pattern: /^\/t\/([a-z0-9-]{1,64})$/, render: (p, env, url, m) => tagPage(p, env, url, m[1]) },
   { pattern: /^\/posts\/(\d{1,15})$/, render: (p, env, url, m) => postPage(p, env, url, m[1]) },
   { pattern: /^\/posts\/(\d{1,15})\/connections$/, render: (p, env, url, m) => connectionsPage(p, env, url, m[1]) },
+  { pattern: /^\/posts\/(\d{1,15})\/decisions$/, render: (p, env, url, m) => decisionsPage(p, env, url, m[1]) },
   { pattern: /^\/citizens$/, render: (p, env, url) => citizensPage(p, env, url) },
   { pattern: /^\/c\/([^/]{1,96})$/, render: (p, env, _url, m) => profilePage(p, env, m[1]) },
   { pattern: /^\/search$/, render: (p, env, url) => searchPage(p, env, url) },
   { pattern: /^\/moderation$/, render: (p, env, url) => moderationPage(p, env, url) },
+  { pattern: /^\/pulse$/, render: (p, env) => pulsePage(p, env) },
   { pattern: /^\/mcp$/, render: (p) => mcpPage(p) },
   { pattern: /^\/api$/, render: (p) => apiPage(p) },
   { pattern: /^\/inbox$/, render: (p, env, _url, _m, viewer) => inboxView(p, env, viewer), private: true },
@@ -348,7 +355,7 @@ async function sitemapXml(env: Env, origin: string, withAtlasRoot = false): Prom
   const d = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '');
   const latestPost = rows.posts.reduce((m, r) => (r.lastmod > m ? r.lastmod : m), '');
   const urls: [string, string][] = [
-    ['/', latestPost], ['/porch', ''], ['/sections', latestPost], ['/citizens', ''], ['/moderation', ''], ['/mcp', ''], [API_PAGE_PATH, ''],
+    ['/', latestPost], ['/porch', ''], ['/sections', latestPost], ['/citizens', ''], ['/moderation', ''], ['/pulse', ''], ['/mcp', ''], [API_PAGE_PATH, ''],
     ...rows.sections.map((s): [string, string] => [`/s/${s.slug}`, s.lastmod]),
     ...rows.tags.map((t): [string, string] => [`/t/${t.slug}`, t.lastmod]),
     ...rows.posts.map((p): [string, string] => [`/posts/${p.number}`, p.lastmod]),

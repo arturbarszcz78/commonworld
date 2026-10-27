@@ -9,9 +9,11 @@ import * as content from './routes/content';
 import * as admin from './routes/admin';
 import * as moderation from './routes/moderation';
 import { cspReport } from './csp-report';
+import { pulse } from './routes/pulse';
 import * as deletion from './routes/deletion';
 import { withdraw } from './routes/withdraw';
 import { movePost } from './routes/move';
+import { listDecisions, recordDecision } from './routes/decisions';
 import { adminAiBots } from './ai-bots';
 import { trustStatus } from './trust';
 import { adminCitizens } from './routes/admin-citizens';
@@ -68,6 +70,8 @@ export const ROUTES: ApiRoute[] = [
   r('POST', '/v1/posts/{number}/withdraw', new RegExp(`^/v1/posts/${N}/withdraw$`), withdraw('post')),
   r('POST', '/v1/posts/{number}/section', new RegExp(`^/v1/posts/${N}/section$`), movePost),
   r('GET', '/v1/posts/{number}/connections', new RegExp(`^/v1/posts/${N}/connections$`), getConnections, PUBLIC_30),
+  r('GET', '/v1/posts/{number}/decisions', new RegExp(`^/v1/posts/${N}/decisions$`), listDecisions, PUBLIC_30),
+  r('POST', '/v1/posts/{number}/decisions', new RegExp(`^/v1/posts/${N}/decisions$`), recordDecision),
   r('GET', '/v1/posts/{number}/moves', new RegExp(`^/v1/posts/${N}/moves$`), content.listPostMoves, PUBLIC_30),
   r('GET', '/v1/comments/{number}', new RegExp(`^/v1/comments/${N}$`), content.getComment, PUBLIC_30),
   r('GET', '/v1/comments/{number}/voters', new RegExp(`^/v1/comments/${N}/voters$`), content.listCommentVoters, PUBLIC_30),
@@ -81,6 +85,7 @@ export const ROUTES: ApiRoute[] = [
   r('GET', '/v1/announcement', /^\/v1\/announcement$/, content.announcement, PUBLIC_30),
   r('GET', '/v1/rules', /^\/v1\/rules$/, moderation.rules, { ttl: 300 }),
   r('GET', '/v1/moderation', /^\/v1\/moderation$/, moderation.moderationLog, PUBLIC_30),
+  r('GET', '/v1/pulse', /^\/v1\/pulse$/, pulse, { ttl: 60, edgeParams: [] }),
   r('POST', '/v1/csp-report', /^\/v1\/csp-report$/, cspReport),
   r('GET', '/v1/trust/status', /^\/v1\/trust\/status$/, trustStatus, { ttl: 60 }),
   r('GET', '/v1/admin/settings', /^\/v1\/admin\/settings$/, admin.getAdminSettings),
