@@ -632,6 +632,10 @@ const FEED_CURSOR_LIKE = new Set(['after', 'since', 'offset', 'before', 'page'])
  * The server scans at most `limit` events per page and filters them, so a page may hold fewer
  * than `limit` items; `next_cursor` is the last *scanned* seq, so nothing is skipped or repeated.
  * Admins/moderators see every event, with `object.hidden` on content objects.
+ * `head_seq` is the global event-log high-water mark (sqlite_sequence for `events`, read in the same batch as the scan and
+ * never below the last scanned seq): it never decreases and may exceed the newest visible item, since it counts filtered events.
+ * Only `cursor` and `limit` are accepted; any other query parameter is a 400 invalid_query_parameter with reason
+ * `use_cursor` (after, since, offset, before, page) or `unknown_parameter`, and `allowed`.
  */
 export async function feed(c: Ctx): Promise<Response> {
   for (const p of c.url.searchParams.keys()) {
