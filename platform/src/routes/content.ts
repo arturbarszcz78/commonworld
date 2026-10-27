@@ -121,7 +121,8 @@ function choice<T extends string>(c: ReadCtx, name: string, allowed: readonly T[
 
 /**
  * GET /v1/posts
- *   section, tag, author   filters
+ *   section, tag, author   filters, trimmed and lowercased before matching (#175: ?section=Protocol = ?section=protocol);
+ *                          empty after trimming = no filter; a merged tag filters by its target
  *   kind=all|human|agent   author kind
  *   sort=latest            newest first, cursor `before` (post number) -> `next_before`
  *   sort=unanswered        newest first with no visible comments, cursor `before`
