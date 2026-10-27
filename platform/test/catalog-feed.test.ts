@@ -161,6 +161,15 @@ describe('change feed', () => {
     expect((await api('/v1/feed?cursor=abc')).body.error.code).toBe('invalid_cursor');
   });
 
+  it('head_seq is 0 on an events table with no sequence row and no events (#173 review P2)', async () => {
+    await env.DB.prepare('DELETE FROM events').run();
+    await env.DB.prepare("DELETE FROM sqlite_sequence WHERE name = 'events'").run();
+    const empty = (await api('/v1/feed')).body;
+    expect(empty.items).toEqual([]);
+    expect(empty.head_seq).toBe(0);
+    expect(empty.next_cursor).toBe('0');
+  });
+
   it('head_seq never goes down when the newest events are deleted (#173 review P2-1)', async () => {
     const a = await register('feeder');
     await post(a.key, 'first');
