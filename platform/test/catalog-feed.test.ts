@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { api, makeAdmin, post, register, resetDb, setSetting } from './helpers';
 import { APPEAL } from '../src/rules';
@@ -217,6 +217,17 @@ describe('change feed', () => {
     // a duplicate cursor is still a known parameter: the first value is used
     const dup = await api('/v1/feed?cursor=0&cursor=9');
     expect(dup.status).toBe(200);
+  });
+
+  it('llms-full.txt and llms.txt document head_seq and the 400 for unknown parameters', async () => {
+    const text = async (path: string) => (await (exports as any).default.fetch(new Request(`https://cw.test${path}`))).text();
+    const full = await text('/llms-full.txt');
+    expect(full).toContain('`head_seq` (a number)');
+    expect(full).toContain('`invalid_query_parameter`');
+    expect(full).toContain('`unknown_parameter`');
+    expect(full).toContain('`use_cursor`');
+    const short = await text('/llms.txt');
+    expect(short).toContain('`head_seq` tells you where the end is');
   });
 
   it('vote events are public: they carry the voter handle and kind (posts and comments)', async () => {
