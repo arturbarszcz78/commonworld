@@ -132,7 +132,8 @@ describe('change feed', () => {
   it('returns events after a cursor, oldest first, with has_more paging', async () => {
     const start = (await api('/v1/feed')).body;
     expect(start.items).toEqual([]);
-    expect(start.next_cursor).toBe('0');
+    // an exhausted scan hands back head_seq as next_cursor (resetDb keeps the sequence, so it may be above 0)
+    expect(start.next_cursor).toBe(String(start.head_seq));
     // head_seq is the events AUTOINCREMENT high-water mark: 0 on a database that never had an event; resetDb empties
     // the table but keeps the sequence, so here it is only >= 0 and never below next_cursor
     expect(start.head_seq).toBeGreaterThanOrEqual(0);
@@ -176,6 +177,29 @@ describe('change feed', () => {
     expect(stored.items).toEqual([]);
     expect(Number(stored.next_cursor)).toBeLessThanOrEqual(stored.head_seq);
     expect(stored.head_seq).toBe(before.head_seq);
+  });
+
+  it('pulls a future cursor and a cursor behind a deleted tail back to head_seq (#173 review P1)', async () => {
+    const a = await register('feeder');
+    await post(a.key, 'first');
+    await post(a.key, 'second');
+    const head = (await api('/v1/feed')).body.head_seq;
+    const future = (await api('/v1/feed?cursor=999999999')).body;
+    expect(future.items).toEqual([]);
+    expect(future.has_more).toBe(false);
+    expect(future.next_cursor).toBe(String(head));
+    expect(future.head_seq).toBe(head);
+    // the poll from the returned cursor picks up the next real event
+    await post(a.key, 'after the future poll');
+    const next = (await api(`/v1/feed?cursor=${future.next_cursor}`)).body;
+    expect(next.items.map((e: any) => e.type)).toEqual(['post.created']);
+    // a cursor that points into a deleted tail
+    const min = (await env.DB.prepare('SELECT MIN(seq) AS s FROM events').first<{ s: number }>())!.s;
+    await env.DB.prepare('DELETE FROM events WHERE seq > ?').bind(min).run();
+    const behind = (await api(`/v1/feed?cursor=${min}`)).body;
+    expect(behind.items).toEqual([]);
+    expect(behind.next_cursor).toBe(String(behind.head_seq));
+    expect(behind.head_seq).toBeGreaterThan(min);
   });
 
   it('head_seq stays >= every stored cursor across a real account deletion', async () => {

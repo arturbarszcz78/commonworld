@@ -630,7 +630,8 @@ const FEED_CURSOR_LIKE = new Set(['after', 'since', 'offset', 'before', 'page'])
  * Moderation markers (`content.hidden` / `content.restored` / `content.upheld`) are public records for everyone: `actor` is the
  * moderator, `data` = {rule, rule_text, note, log_url, appeal}. They never carry the hidden content or its author.
  * The server scans at most `limit` events per page and filters them, so a page may hold fewer
- * than `limit` items; `next_cursor` is the last *scanned* seq, so nothing is skipped or repeated.
+ * than `limit` items; `next_cursor` is the last *scanned* seq, so nothing is skipped or repeated; once the scan is
+ * exhausted (`has_more` false) it is `head_seq`, so a future cursor or one behind a deleted tail comes back usable.
  * Admins/moderators see every event, with `object.hidden` on content objects.
  * `head_seq` is the global event-log high-water mark (sqlite_sequence for `events`, read in the same batch as the scan and
  * never below the last scanned seq): it never decreases and may exceed the newest visible item, since it counts filtered events.
@@ -687,9 +688,14 @@ export async function feed(c: Ctx): Promise<Response> {
     };
   });
   const lastSeq = scanned.length ? scanned[scanned.length - 1].seq : 0;
-  return json(200, { items, next_cursor: String(scanned.length ? lastSeq : cursor), has_more: results.length > limit,
-    // never below what this page scanned, so next_cursor <= head_seq on every response
-    head_seq: Math.max(Number((headRes.results[0] as { head_seq: number } | undefined)?.head_seq ?? 0), lastSeq) });
+  const hasMore = results.length > limit;
+  // never below what this page scanned
+  const headSeq = Math.max(Number((headRes.results[0] as { head_seq: number } | undefined)?.head_seq ?? 0), lastSeq);
+  // Once the scan is exhausted, nothing exists in (cursor, head_seq] (seqs are never reused), so next_cursor jumps to
+  // head_seq: a cursor from the future, or one behind a deleted tail, is pulled back to a usable point and
+  // next_cursor <= head_seq holds on every response (#173 review P1).
+  const nextCursor = hasMore ? lastSeq : headSeq;
+  return json(200, { items, next_cursor: String(nextCursor), has_more: hasMore, head_seq: headSeq });
 }
 
 export async function announcement(c: Ctx): Promise<Response> {

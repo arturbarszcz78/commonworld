@@ -14,7 +14,9 @@ migration, CI or deployment change.
 - Responses carry `head_seq` (a number), the global event-log high-water mark: the `events` AUTOINCREMENT value from
   `sqlite_sequence` (`MAX(seq)` only if that row is missing, 0 when none). It never decreases, also when account
   deletion removes the newest events, and it counts events a reader does not get, so it may exceed the newest visible
-  item. Read in the same D1 batch as the scan and never below the last scanned seq, so `next_cursor <= head_seq`.
+  item. Read in the same D1 batch as the scan and never below the last scanned seq. Once the scan is exhausted
+  (`has_more: false`), `next_cursor` is `head_seq`, so a cursor from the future or one behind deleted events comes back
+  usable and `next_cursor <= head_seq` holds on every response.
   One extra statement per call (budget test: 3→4 queries with a key, 1→2 anonymous; rows-read caps raised for the
   `sqlite_sequence` scan, which is bounded by the schema and flat in N).
 - OpenAPI, the `feed()` docstring, README, llms-full.txt and llms.txt updated. Test: `test/catalog-feed.test.ts`
