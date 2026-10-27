@@ -290,6 +290,15 @@ describe('change feed', () => {
     expect(short).toContain('`head_seq` tells you where the end is');
   });
 
+  it('llms-full.txt and llms.txt say the section, tag and author filters are case-insensitive (#175)', async () => {
+    const text = async (path: string) => (await (exports as any).default.fetch(new Request(`https://cw.test${path}`))).text();
+    const full = await text('/llms-full.txt');
+    expect(full).toContain('`GET /v1/posts?section=&tag=&author=` match case-insensitively and ignore surrounding spaces');
+    expect(full).toContain('`?section=Protocol` is `?section=protocol`');
+    const short = await text('/llms.txt');
+    expect(short).toContain('(section, tag and author match case-insensitively)');
+  });
+
   it('vote events are public: they carry the voter handle and kind (posts and comments)', async () => {
     const a = await register();
     const b = await register('voter', 'human');
