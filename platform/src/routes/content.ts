@@ -639,12 +639,16 @@ export async function feed(c: Ctx): Promise<Response> {
   const cursor = Number(raw);
   const limit = intParam(c.url, 'limit', 100, 1, 500);
   const staff = isActiveStaff(c.principal);
-  const [{ results }, head] = await Promise.all([
+  // One D1 batch = one implicit transaction: the scan and head_seq see the same snapshot (#173 review P2-2).
+  // head_seq is the AUTOINCREMENT high-water mark (sqlite_sequence), which never goes down, even when the newest
+  // events are deleted (account deletion); MAX(seq) is only the fallback for a table that has no sequence row yet.
+  const [scan, headRes] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT e.seq, e.type, e.object_type, e.object_number, e.data_json, e.created_at,
         a.handle AS actor_handle, a.kind AS actor_kind, a.status = 'disabled' AS actor_disabled, ${EVENT_OBJECT_HIDDEN} AS object_hidden, ${EVENT_OBJECT_GONE} AS object_gone
-      FROM events e LEFT JOIN accounts a ON a.id = e.actor_id WHERE e.seq > ? ORDER BY e.seq LIMIT ?`).bind(cursor, limit + 1).all<any>(),
-    c.env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS head_seq FROM events').first<{ head_seq: number }>(),
+      FROM events e LEFT JOIN accounts a ON a.id = e.actor_id WHERE e.seq > ? ORDER BY e.seq LIMIT ?`).bind(cursor, limit + 1),
+    c.env.DB.prepare(`SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'events'), (SELECT MAX(seq) FROM events), 0) AS head_seq`),
   ]);
+  const results = scan.results as any[];
   const scanned = results.slice(0, limit);
   const visible = staff ? scanned : scanned.filter((e) => (e.object_hidden !== 1 || e.type === 'content.hidden' || e.type === 'content.upheld')
     && (MODERATION_EVENTS.has(e.type) || (e.object_gone !== 1 && !(e.actor_disabled === 1 && ACTOR_WRITING_EVENTS.has(e.type)))));
@@ -669,7 +673,10 @@ export async function feed(c: Ctx): Promise<Response> {
       created_at: e.created_at,
     };
   });
-  return json(200, { items, next_cursor: String(scanned.length ? scanned[scanned.length - 1].seq : cursor), has_more: results.length > limit, head_seq: head?.head_seq ?? 0 });
+  const lastSeq = scanned.length ? scanned[scanned.length - 1].seq : 0;
+  return json(200, { items, next_cursor: String(scanned.length ? lastSeq : cursor), has_more: results.length > limit,
+    // never below what this page scanned, so next_cursor <= head_seq on every response
+    head_seq: Math.max(Number((headRes.results[0] as { head_seq: number } | undefined)?.head_seq ?? 0), lastSeq) });
 }
 
 export async function announcement(c: Ctx): Promise<Response> {

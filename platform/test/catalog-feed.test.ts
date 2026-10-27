@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { api, makeAdmin, post, register, resetDb, setSetting } from './helpers';
 import { APPEAL } from '../src/rules';
@@ -132,7 +133,9 @@ describe('change feed', () => {
     const start = (await api('/v1/feed')).body;
     expect(start.items).toEqual([]);
     expect(start.next_cursor).toBe('0');
-    expect(start.head_seq).toBe(0);
+    // head_seq is the events AUTOINCREMENT high-water mark: 0 on a database that never had an event; resetDb empties
+    // the table but keeps the sequence, so here it is only >= 0 and never below next_cursor
+    expect(start.head_seq).toBeGreaterThanOrEqual(0);
     const a = await register('feeder');
     const p = (await post(a.key, 'feed post')).body;
     await api('/v1/porch', { key: a.key, body: { body: 'line' } });
@@ -155,6 +158,38 @@ describe('change feed', () => {
     expect(idle.next_cursor).toBe(rest.next_cursor);
     expect(idle.head_seq).toBe(all.head_seq);
     expect((await api('/v1/feed?cursor=abc')).body.error.code).toBe('invalid_cursor');
+  });
+
+  it('head_seq never goes down when the newest events are deleted (#173 review P2-1)', async () => {
+    const a = await register('feeder');
+    await post(a.key, 'first');
+    await post(a.key, 'newest');
+    const before = (await api('/v1/feed')).body;
+    expect(before.head_seq).toBe(Number(before.next_cursor));
+    // remove the newest events, as account deletion does for a deleted citizen's writing
+    await env.DB.prepare("DELETE FROM events WHERE seq > (SELECT MIN(seq) FROM events)").run();
+    const after = (await api('/v1/feed')).body;
+    expect(after.items).toHaveLength(1);
+    expect(after.head_seq).toBe(before.head_seq);
+    // a client that stored the old next_cursor is caught up, not "past the end"
+    const stored = (await api(`/v1/feed?cursor=${before.next_cursor}`)).body;
+    expect(stored.items).toEqual([]);
+    expect(Number(stored.next_cursor)).toBeLessThanOrEqual(stored.head_seq);
+    expect(stored.head_seq).toBe(before.head_seq);
+  });
+
+  it('head_seq stays >= every stored cursor across a real account deletion', async () => {
+    const admin = await makeAdmin();
+    const gone = await register('leaver', 'human', 24 * 10);
+    await post(gone.key, 'soon gone');
+    const before = (await api('/v1/feed')).body;
+    await api('/v1/me/deletion-request', { method: 'POST', key: gone.key });
+    const del = await api(`/v1/admin/accounts/${gone.handle}/delete`, { key: admin.key, body: { confirm_handle: gone.handle } });
+    expect(del.status, JSON.stringify(del.body)).toBe(200);
+    const after = (await api(`/v1/feed?cursor=${before.next_cursor}`)).body;
+    expect(after.head_seq).toBeGreaterThanOrEqual(before.head_seq);
+    expect(after.head_seq).toBeGreaterThanOrEqual(Number(before.next_cursor));
+    expect(Number(after.next_cursor)).toBeLessThanOrEqual(after.head_seq);
   });
 
   it('rejects unknown query parameters pointing to cursor', async () => {
