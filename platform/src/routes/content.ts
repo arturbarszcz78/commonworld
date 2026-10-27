@@ -617,6 +617,11 @@ const EVENT_OBJECT_GONE = `CASE e.object_type
 /** Events a disabled actor's own writing produced: dropped for public readers (F1). Other events by them (tag.created) keep, with actor null. */
 const ACTOR_WRITING_EVENTS = new Set(['post.created', 'comment.created', 'porch.created', 'vote.created', 'content.withdrawn', 'post.moved']);
 
+/** The only query parameters GET /v1/feed accepts (#138). */
+const FEED_PARAMS = ['cursor', 'limit'];
+/** Names other APIs use for paging: refused with reason use_cursor; any other unknown name gets unknown_parameter. */
+const FEED_CURSOR_LIKE = new Set(['after', 'since', 'offset', 'before', 'page']);
+
 /**
  * Events strictly after `cursor` (an event seq), oldest first. Poll with the returned next_cursor.
  *
@@ -630,8 +635,12 @@ const ACTOR_WRITING_EVENTS = new Set(['post.created', 'comment.created', 'porch.
  */
 export async function feed(c: Ctx): Promise<Response> {
   for (const p of c.url.searchParams.keys()) {
-    if (p !== 'cursor' && p !== 'limit') {
-      throw new HttpError(400, 'invalid_query_parameter', { parameter: p, reason: 'use_cursor' });
+    if (!FEED_PARAMS.includes(p)) {
+      throw new HttpError(400, 'invalid_query_parameter', {
+        parameter: p.slice(0, 64),
+        reason: FEED_CURSOR_LIKE.has(p.toLowerCase()) ? 'use_cursor' : 'unknown_parameter',
+        allowed: FEED_PARAMS,
+      });
     }
   }
   const raw = c.url.searchParams.get('cursor') ?? '0';

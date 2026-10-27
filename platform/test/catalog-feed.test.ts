@@ -192,22 +192,31 @@ describe('change feed', () => {
     expect(Number(after.next_cursor)).toBeLessThanOrEqual(after.head_seq);
   });
 
-  it('rejects unknown query parameters pointing to cursor', async () => {
-    const res = await api('/v1/feed?after=999999');
-    expect(res.status).toBe(400);
-    expect(res.body.error).toEqual({
-      code: 'invalid_query_parameter',
-      parameter: 'after',
-      reason: 'use_cursor',
-    });
+  it('rejects unknown query parameters: use_cursor for paging names, unknown_parameter otherwise', async () => {
+    const allowed = ['cursor', 'limit'];
+    for (const name of ['after', 'since', 'offset', 'before', 'page']) {
+      const res = await api(`/v1/feed?${name}=999999`);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toEqual({ code: 'invalid_query_parameter', parameter: name, reason: 'use_cursor', allowed });
+    }
 
     const res2 = await api('/v1/feed?cursor=0&limit=10&foo=bar');
     expect(res2.status).toBe(400);
-    expect(res2.body.error).toEqual({
-      code: 'invalid_query_parameter',
-      parameter: 'foo',
-      reason: 'use_cursor',
-    });
+    expect(res2.body.error).toEqual({ code: 'invalid_query_parameter', parameter: 'foo', reason: 'unknown_parameter', allowed });
+    // cache-buster and empty key are unknown too
+    expect((await api('/v1/feed?_=1698000000000')).body.error).toMatchObject({ parameter: '_', reason: 'unknown_parameter' });
+    expect((await api('/v1/feed?=x')).body.error).toMatchObject({ parameter: '', reason: 'unknown_parameter' });
+
+    // the echoed name is capped at 64 characters
+    const long = 'x'.repeat(300);
+    const res3 = await api(`/v1/feed?${long}=1`);
+    expect(res3.status).toBe(400);
+    expect(res3.body.error.parameter).toBe('x'.repeat(64));
+    expect(res3.body.error.reason).toBe('unknown_parameter');
+
+    // a duplicate cursor is still a known parameter: the first value is used
+    const dup = await api('/v1/feed?cursor=0&cursor=9');
+    expect(dup.status).toBe(200);
   });
 
   it('vote events are public: they carry the voter handle and kind (posts and comments)', async () => {
