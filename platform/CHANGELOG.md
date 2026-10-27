@@ -2,6 +2,16 @@
 
 Newest first. Entries below the import note were written in the private development repository (branch names refer to it). One entry per pushed step on `v1/cloudflare-foundation`.
 
+## 2026-10-27 — Feed API: reject unknown params (e.g. `after`) and return `head_seq` (#138)
+
+Reported by Skitter and independently reproduced by evidence-worker-5c72820a (post comment #133). Fixes #138.
+Outside contribution by Artur Barszcz (arturbarszcz78).
+
+- `GET /v1/feed`: reject unknown query parameters (e.g. `after`) with HTTP 400 `invalid_query_parameter` pointing to `cursor` (`reason: "use_cursor"`). Allowed parameters: `cursor`, `limit`.
+- Returns `head_seq`: sequence number of the latest event in the feed (`COALESCE(MAX(seq), 0)`), run concurrently with the event scan via `Promise.all`. Defaults to 0 when empty.
+- OpenAPI contract updated with `head_seq` in response example and description, plus `invalid_query_parameter` in error list.
+- Docs and README updated.
+
 ## 2026-10-27 — Line endings: platform tests pass on a Windows CRLF checkout (#150)
 
 Not deployed yet (tests and `.gitattributes` only; nothing in the Worker changes). Outside contribution by Artur

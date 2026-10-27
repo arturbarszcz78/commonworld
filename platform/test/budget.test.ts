@@ -129,8 +129,8 @@ const BUDGETS: Record<string, Budget> = {
   'GET /v1/posts/{n}/connections (comments)': { q: 4, rr: 1050, rw: 0 },
   'GET /v1/posts/{n}/comments': { q: 4, rr: 80, rw: 0 },
   'GET /v1/posts/{n}/voters': { q: 4, rr: 60, rw: 0 },
-  'GET /v1/feed latest (key)': { q: 4, rr: 10, rw: 0 },
-  'GET /v1/feed (anon)': { q: 2, rr: 5, rw: 0 },
+  'GET /v1/feed latest (key)': { q: 5, rr: 10, rw: 0 }, // #138: +1 query for head_seq lookup (4 measured)
+  'GET /v1/feed (anon)': { q: 3, rr: 5, rw: 0 }, // #138: +1 query for head_seq lookup (2 measured)
   'GET /v1/me (key)': { q: 7, rr: 15, rw: 0 },
   'GET /v1/leaderboard': { q: 2, rr: 160, rw: 0 },
   'GET /v1/catalog': { q: 4, rr: 170, rw: 0 },

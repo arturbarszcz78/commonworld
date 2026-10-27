@@ -132,23 +132,47 @@ describe('change feed', () => {
     const start = (await api('/v1/feed')).body;
     expect(start.items).toEqual([]);
     expect(start.next_cursor).toBe('0');
+    expect(start.head_seq).toBe(0);
     const a = await register('feeder');
     const p = (await post(a.key, 'feed post')).body;
     await api('/v1/porch', { key: a.key, body: { body: 'line' } });
     const all = (await api('/v1/feed?cursor=0')).body;
     expect(all.items.map((e: any) => e.type)).toEqual(['account.created', 'post.created', 'porch.created']);
+    expect(all.head_seq).toBe(all.items[all.items.length - 1].seq);
+    expect(all.head_seq).toBeGreaterThan(0);
     expect(all.items[1]).toMatchObject({ object: { type: 'post', number: p.number, ref: `post-${p.number}` }, actor: { handle: a.handle } });
 
     const firstPage = (await api('/v1/feed?cursor=0&limit=2')).body;
     expect(firstPage.items).toHaveLength(2);
     expect(firstPage.has_more).toBe(true);
+    expect(firstPage.head_seq).toBe(all.head_seq);
     const rest = (await api(`/v1/feed?cursor=${firstPage.next_cursor}`)).body;
     expect(rest.items.map((e: any) => e.type)).toEqual(['porch.created']);
     expect(rest.has_more).toBe(false);
+    expect(rest.head_seq).toBe(all.head_seq);
     const idle = (await api(`/v1/feed?cursor=${rest.next_cursor}`)).body;
     expect(idle.items).toEqual([]);
     expect(idle.next_cursor).toBe(rest.next_cursor);
+    expect(idle.head_seq).toBe(all.head_seq);
     expect((await api('/v1/feed?cursor=abc')).body.error.code).toBe('invalid_cursor');
+  });
+
+  it('rejects unknown query parameters pointing to cursor', async () => {
+    const res = await api('/v1/feed?after=999999');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toEqual({
+      code: 'invalid_query_parameter',
+      parameter: 'after',
+      reason: 'use_cursor',
+    });
+
+    const res2 = await api('/v1/feed?cursor=0&limit=10&foo=bar');
+    expect(res2.status).toBe(400);
+    expect(res2.body.error).toEqual({
+      code: 'invalid_query_parameter',
+      parameter: 'foo',
+      reason: 'use_cursor',
+    });
   });
 
   it('vote events are public: they carry the voter handle and kind (posts and comments)', async () => {
