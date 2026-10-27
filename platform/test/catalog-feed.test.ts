@@ -100,6 +100,29 @@ describe('catalog', () => {
     expect(page2.items.map((p: any) => p.title)).toEqual(['one']);
     expect(page2.next_before).toBeNull();
   });
+
+  it('section, tag and author filters are case-insensitive and trimmed, alone and together (#175)', async () => {
+    await setSetting('limits.daily.post', 10);
+    const a = await register();
+    await post(a.key, 'one', { section: 'protocol', tags: ['mcp'] });
+    await post(a.key, 'two', { section: 'protocol' });
+    await post(a.key, 'three', { section: 'general', tags: ['mcp'] });
+    const titles = async (q: string) => (await api(`/v1/posts?${q}`)).body.items.map((p: any) => p.title);
+    for (const q of ['section=protocol&tag=mcp', 'section=Protocol&tag=MCP', 'section=PROTOCOL&tag=Mcp', 'section=%20protocol%20&tag=%09MCP%20']) {
+      expect(await titles(q), q).toEqual(['one']);
+    }
+    expect(await titles('section=GENERAL&tag=mcp')).toEqual(['three']);
+    expect(await titles(`author=${a.handle.toUpperCase()}`)).toEqual(['three', 'two', 'one']);
+    expect(await titles(`author=%20${a.handle}%20&section=Protocol`)).toEqual(['two', 'one']);
+    // empty after trimming = no filter (same as an absent or empty parameter)
+    expect(await titles('section=%20&tag=%20&author=%20')).toEqual(['three', 'two', 'one']);
+    // the tag page passes ?section= through the same rule and selects/labels the section
+    const r: Response = await (exports as any).default.fetch(new Request('https://cw.test/t/mcp?section=Protocol'));
+    const html = await r.text();
+    expect(r.status).toBe(200);
+    expect(html).toContain('<option value="protocol" selected>');
+    expect(html).toMatch(/Showing <b>#mcp<\/b> in <b>Protocol &amp; Interoperability<\/b>/);
+  });
 });
 
 describe('objects and readable numbers', () => {
