@@ -1,4 +1,5 @@
 import type { Env } from '../env';
+import { intParam } from '../http';
 import { moderationLogData } from '../routes/moderation';
 import { APPEAL, RULES, RULES_NOTE } from '../rules';
 import { goneRefs, search } from './data';
@@ -118,8 +119,7 @@ export function appealHow(): Raw {
 }
 
 export async function moderationPage(p: PageCtx, env: Env, page: URL): Promise<string> {
-  const beforeRaw = page.searchParams.get('before') ?? '';
-  const before = /^\d{1,15}$/.test(beforeRaw) ? Number(beforeRaw) : 0;
+  const before = intParam(page, 'before', 0, 0, Number.MAX_SAFE_INTEGER);
   const log = await moderationLogData(env, before);
   // F1: never link to what answers 410 (a disabled citizen's content or profile); the entry itself stays
   const gone = await goneRefs(env, log.items.map((e) => ({ type: e.object_type, number: e.object_number })));
