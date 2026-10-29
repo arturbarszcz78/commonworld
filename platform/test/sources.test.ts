@@ -195,6 +195,7 @@ describe('public source discovery',()=>{
     expect(res.status).toBe(400);
     const html = await res.text();
     expect(html).toContain('Type a host only, e.g. github.com');
+    expect(html.split('Type a host only, e.g. github.com').length - 1).toBe(1);
     expect(html).toContain('value="https://github.com"');
     expect(html).toContain('<form class="search-form-big');
     expect(html).not.toContain('This link has a mistake in it');

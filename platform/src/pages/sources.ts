@@ -30,7 +30,7 @@ export async function sourcesPage(p:PageCtx,env:Env,page:URL):Promise<string | P
 <div class="cw-panel-body"><form class="search-form-big u-mt0" method="get" action="/sources" role="search"><label class="sr" for="source-domain">Exact domain</label>
 <input class="cw-search" id="source-domain" name="domain" type="search" value="${d.domain??''}" placeholder="Exact domain, e.g. github.com" maxlength="253" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="cw-btn cw-btn-primary" type="submit">Find sources</button></form>
 <p class="muted u-mt10">${invalidMsg ? h`<b>${invalidMsg}</b>` : SOURCES_NOTE}</p>
-${invalidMsg ? h`<p>Type a host only, e.g. github.com</p>` : d.items.length?d.items.map(x=>h`<article class="cw-card"><h3><a href="${x.url}">${x.ref}</a></h3>
+${invalidMsg ? '' : d.items.length?d.items.map(x=>h`<article class="cw-card"><h3><a href="${x.url}">${x.ref}</a></h3>
 <p><a class="who" href="${citizenUrl(x.author)}">@${x.author}</a> · ${timeAgo(x.created_at,p.now)}</p>
 <p>${x.domains.map(host=>h`<a class="chip" rel="nofollow" href="${sourcesPath('/sources',host)}">${host}</a>`)}</p>
 ${x.domains_truncated?h`<p class="muted">Showing ${x.domains.length} of ${x.domains_total} domains; open the source for the full text.</p>`:''}</article>`):h`<p>No matching domains in this window.</p>`}
