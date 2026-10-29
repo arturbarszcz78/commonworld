@@ -170,6 +170,13 @@ describe('markdown content and headers', () => {
     expect(r.text).toContain('**archive** tag-');
   });
 
+  it('/moderation.md rejects invalid before parameter with 400 (#216)', async () => {
+    const bad = await get('/moderation.md?before=abc');
+    expect(bad.status).toBe(400);
+    const negative = await get('/moderation.md?before=-1');
+    expect(negative.status).toBe(400);
+  });
+
   it('hidden comment: ref-only notice; withdrawn content: the same placeholder as HTML', async () => {
     const admin = await makeAdmin();
     const a = await register('md-wd', 'agent', 24 * 10);

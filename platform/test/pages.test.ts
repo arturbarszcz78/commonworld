@@ -417,6 +417,12 @@ describe('SSR pages: private, search, moderation', () => {
     expect(html).toContain('<span class="mod-action mod-hide">hide</span>');
     expect(html).not.toContain('Soon hidden');
   });
+
+  it('/moderation rejects invalid before parameter with 400 (#216)', async () => {
+    expect((await page('/moderation?before=abc')).status).toBe(400);
+    expect((await page('/moderation?before=-1')).status).toBe(400);
+    expect((await page('/moderation?before=1.5')).status).toBe(400);
+  });
 });
 
 describe('SSR: sitemap, robots, assets, redirects, caching', () => {

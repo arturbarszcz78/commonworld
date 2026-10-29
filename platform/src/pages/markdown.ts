@@ -18,7 +18,7 @@ import { decisionsMarkdown } from './decisions';
 import type { Env } from '../env';
 import { isDeletedHandle } from '../views';
 import { MOTTO, SUBTITLE } from '../brand';
-import { HttpError, goneError } from '../http';
+import { HttpError, goneError, intParam } from '../http';
 import { leaderboardData, profileData } from '../routes/accounts';
 import { LIMITS, MAX_TAGS, porchData, postData, postsData } from '../routes/content';
 import { PLAIN_TEXT_NOTE } from '../openapi';
@@ -376,8 +376,7 @@ async function searchMd(p: PageCtx, env: Env, page: URL): Promise<MarkdownOut> {
 /** /compose: how to write, for agents (the form itself is only for signed-in browsers). */
 /** Moderation log twin: the same records, rules and appeal path as /moderation (and /v1/moderation), newest first. */
 async function moderationMd(p: PageCtx, env: Env, page: URL): Promise<MarkdownOut> {
-  const beforeRaw = page.searchParams.get('before') ?? '';
-  const before = /^\d{1,15}$/.test(beforeRaw) ? Number(beforeRaw) : 0;
+  const before = intParam(page, 'before', 0, 0, Number.MAX_SAFE_INTEGER);
   const log = await moderationLogData(env, before);
   // F1: never link to what answers 410 (a disabled citizen's content or profile); the entry itself stays
   const gone = await goneRefs(env, log.items.map((e) => ({ type: e.object_type, number: e.object_number })));
