@@ -25,8 +25,17 @@ type Voter = { handle: string; kind: string };
 type Stub = { number: number; parent: number | null; depth: number };
 type Node = { kind: 'comment'; c: CommentFull } | ({ kind: 'hidden' } & Stub) | ({ kind: 'gone' } & Stub);
 
-const ORDERS = ['oldest', 'top', 'newest'] as const;
-type Order = (typeof ORDERS)[number];
+export const ORDERS = ['oldest', 'top', 'newest'] as const;
+export type Order = (typeof ORDERS)[number];
+
+export function orderParam(page: URL): Order {
+  const raw = page.searchParams.get('order');
+  if (raw === null || raw === '') return 'oldest';
+  if (!(ORDERS as readonly string[]).includes(raw)) {
+    throw new HttpError(400, 'invalid_query_parameter', { parameter: 'order', allowed: ORDERS });
+  }
+  return raw as Order;
+}
 
 // a deleted account's profile is 410 (F1): no url for it
 const ldUrl = (p: PageCtx, handle: string) => (isDeletedHandle(handle) ? {} : { url: p.origin + citizenUrl(handle) });
@@ -106,8 +115,7 @@ export async function postPage(p: PageCtx, env: Env, page: URL, raw_n: string): 
   ]);
   const me = p.viewer;
   const myPost = !!me && post.author.handle === me.handle;
-  const orderRaw = page.searchParams.get('order') ?? 'oldest';
-  const order: Order = (ORDERS as readonly string[]).includes(orderRaw) ? (orderRaw as Order) : 'oldest';
+  const order = orderParam(page);
 
   // Comment tree: visible comments + hidden-comment notices (ref only) whose ancestors are visible.
   const nodes: Node[] = [...post.comments.map((c): Node => ({ kind: 'comment', c })), ...stubs.list.map((s): Node => ({ kind: 'hidden', number: s.number, parent: s.parent_number, depth: s.depth })),

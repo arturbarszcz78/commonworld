@@ -28,6 +28,7 @@ import { authorComments, authorPorch, existingMentions, profileRobots, goneComme
 import { feedApiPath, loadFeed } from './feed';
 import { excerpt, plural } from './html';
 import { type Mentions, MENTION_SRC, type PageCtx, EMPTY_SECTION_TEXT, citizenUrl, composeUrl, hasMarkdownTwin, markdownPath, postUrl, sectionUrl, tagUrl } from './layout';
+import { orderParam } from './post';
 import { mcpMarkdown } from '../mcp/docs';
 import { API_PAGE_PATH, apiMarkdown } from './api-page';
 import { exportMarkdown } from './export';
@@ -243,39 +244,46 @@ async function postMd(p: PageCtx, env: Env, page: URL, rawN: string): Promise<Ma
   }
   // #114: one window of the comments, as on the HTML page (`?after=N`, the cursor of GET /v1/posts/{n}/comments)
   const after = commentsAfterParam(page);
+  const order = orderParam(page);
   const post = await postData(ro(p, env, `/v1/posts/${n}`, [rawN]), { commentsAfter: after });
   const range = stubRange(after, post.comments, post.comments_next_after);
   const [stubs, gone, mentions] = await Promise.all([hiddenCommentStubs(env, n, range), goneCommentStubs(env, n, range),
     // one lookup for every @handle in the twin: only citizens that exist become links (#81), as on the HTML page
     existingMentions(env, [...(post.withdrawn ? [] : [post.body]), ...post.comments.filter((c) => !c.withdrawn).map((c) => c.body)])]);
   const mod = await lastModerationMany(env, 'comment', stubs.map((s) => s.number));
-  type Node = { number: number; parent: number | null; text: string };
+  type Node = { number: number; parent: number | null; text: string; upvotes: number };
   const url = p.origin + postUrl(n);
   // a reply whose parent is in an earlier window is listed at the top level, linked to its parent (/comments/{n})
   const shown = new Set<number>([...post.comments.map((c) => c.number), ...stubs.map((s) => s.number), ...gone.map((s) => s.number)]);
   const nodes: Node[] = [
     ...post.comments.map((c) => ({
-      number: c.number, parent: c.parent_number,
+      number: c.number, parent: c.parent_number, upvotes: c.upvotes,
       text: `### comment-${c.number}\n\n- Author: ${who(p, c.author)}${c.author.handle === post.author.handle ? ' — post author' : ''}\n- Date: ${c.created_at}\n- Upvotes: ${c.upvotes}\n${c.parent_number ? `- Reply to: [comment-${c.parent_number}](${shown.has(c.parent_number) ? `${url}#comment-${c.parent_number}` : `${p.origin}/comments/${c.parent_number}`})\n` : ''}- Link: ${url}#comment-${c.number}\n\n${c.withdrawn ? mdText(c.body) : mdBody(p, c.body, mentions)}`,
     })),
     ...stubs.map((s) => {
       const ev = mod.get(s.number);
-      return { number: s.number, parent: s.parent_number, text: `### comment-${s.number} (hidden)\n\nThis comment was hidden by moderation. Replies under it are hidden too.${ev ? ` Moderation log entry: ${p.origin}${ev.log_url}` : ''}` };
+      return { number: s.number, parent: s.parent_number, upvotes: -1, text: `### comment-${s.number} (hidden)\n\nThis comment was hidden by moderation. Replies under it are hidden too.${ev ? ` Moderation log entry: ${p.origin}${ev.log_url}` : ''}` };
     }),
     // F1: a disabled citizen's comment: neutral placeholder (no author, no text); the replies under it stay
-    ...gone.map((s) => ({ number: s.number, parent: s.parent_number, text: `### comment-${s.number} (comment hidden)\n\nComment hidden.` })),
+    ...gone.map((s) => ({ number: s.number, parent: s.parent_number, upvotes: -1, text: `### comment-${s.number} (comment hidden)\n\nComment hidden.` })),
   ];
   const kids = new Map<number | null, Node[]>();
   for (const x of nodes) { const k = x.parent !== null && shown.has(x.parent) ? x.parent : null; kids.set(k, [...(kids.get(k) ?? []), x]); }
+  const sortNodes = (list: Node[]) => [...list].sort((a, b) => {
+    if (order === 'newest') return b.number - a.number;
+    if (order === 'top') return b.upvotes - a.upvotes || a.number - b.number;
+    return a.number - b.number;
+  });
   const ordered: string[] = [];
-  const walk = (parent: number | null) => { for (const x of (kids.get(parent) ?? []).sort((a, b) => a.number - b.number)) { ordered.push(x.text); walk(x.number); } };
+  const walk = (parent: number | null) => { for (const x of sortNodes(kids.get(parent) ?? [])) { ordered.push(x.text); walk(x.number); } };
   walk(null);
   const first = String(post.body ?? '').split(/\n\s*\n/)[0] ?? '';
   // only part of the comments here (#114): say so, and link the first and the next window and the paged JSON
+  const orderQ = order !== 'oldest' ? `order=${order}` : '';
   const pager = after === 0 && post.comments_next_after === null ? '' : [
     commentsWindowNote(post.comments.length, post.comments_total, after),
-    ...(after > 0 ? [`First comments: ${p.origin}${postUrl(n)}.md`] : []),
-    ...(post.comments_next_after !== null ? [`Next comments: ${p.origin}${postUrl(n)}.md?after=${post.comments_next_after}`] : []),
+    ...(after > 0 ? [`First comments: ${p.origin}${postUrl(n)}.md${orderQ ? `?${orderQ}` : ''}`] : []),
+    ...(post.comments_next_after !== null ? [`Next comments: ${p.origin}${postUrl(n)}.md?${[orderQ, `after=${post.comments_next_after}`].filter(Boolean).join('&')}`] : []),
     `All comments as JSON: ${p.origin}${commentsPath(n)}`,
   ].join(' ');
   return {
