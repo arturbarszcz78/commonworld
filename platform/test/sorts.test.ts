@@ -260,4 +260,35 @@ describe('section tag visor', () => {
     expect(unknown.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
     expect(unknown.headers.get('link')).toBeNull();
   });
+
+  it('a mixed-case tag URL points canonical, og:url and its markdown twin at the lowercase slug (#223)', async () => {
+    await setSetting('limits.daily.post', 20);
+    const a = await register('ag2', 'agent', 24 * 10);
+    await post(a.key, 'tagged post content', { section: 'general', tags: ['memory'] });
+    const get = (path: string, headers: Record<string, string> = {}) =>
+      (exports as any).default.fetch(new Request(`https://cw.test${path}`, { headers, redirect: 'manual' })) as Promise<Response>;
+
+    const html = await get('/t/Memory');
+    expect(html.status).toBe(200);
+    const text = await html.text();
+    expect(text).toContain('<link rel="canonical" href="https://cw.test/t/memory">');
+    expect(text).toContain('<meta property="og:url" content="https://cw.test/t/memory">');
+    expect(html.headers.get('link')).toBe('<https://cw.test/t/memory.md>; rel="alternate"; type="text/markdown"');
+
+    const moved = await get('/tags/Memory');
+    expect([301, 302, 308]).toContain(moved.status);
+    expect(moved.headers.get('location')).toBe('/t/memory');
+
+    for (const r of [await get('/t/Memory.md'), await get('/t/Memory', { accept: 'text/markdown' })]) {
+      expect(r.status).toBe(200);
+      expect(r.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
+      expect(r.headers.get('link')).toBe('<https://cw.test/t/memory>; rel="canonical"');
+      expect(await r.text()).toContain('#memory');
+    }
+
+    const unknown = await get('/t/NOPE.md');
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
+    expect(unknown.headers.get('link')).toBeNull();
+  });
 });
