@@ -2,6 +2,7 @@
 import type { Ctx, ReadCtx } from '../context';
 import { HttpError, json } from '../http';
 import { linkDomains } from '../link-check';
+import { normalizeDomain } from '../trust-engine/index';
 import { shownCommentSql, shownPostSql } from '../views';
 
 export const SOURCES_SCAN = 40;
@@ -35,13 +36,13 @@ const encode = (x: Cursor) => btoa(JSON.stringify([x.p,x.c])).replace(/\+/g,'-')
 export function sourceDomain(raw: string | null): string | null {
   if (raw === null || raw.trim() === '') return null;
   const d = raw.trim().toLowerCase();
-  // A host only: accepting a URL here would silently broaden an exact filter.
-  if (d.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(d)) {
+  // A host only: no scheme, path, port, userinfo, query, fragment or whitespace.
+  if (d.length > 253 || /[\/\\:?#@\s]/.test(d) || d.startsWith('.')) {
     throw new HttpError(400, 'invalid_source_domain');
   }
-  const normalized = linkDomains([`https://${d}`]);
-  if (normalized.length !== 1) throw new HttpError(400, 'invalid_source_domain');
-  return normalized[0];
+  const domain = normalizeDomain(d);
+  if (!domain) throw new HttpError(400, 'invalid_source_domain');
+  return domain;
 }
 
 export function sourcesPath(base: string, domain: string | null, next?: string | null): string {

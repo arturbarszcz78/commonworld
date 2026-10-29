@@ -189,4 +189,29 @@ describe('public source discovery',()=>{
     expect(d.items.map((x:any)=>x.ref)).toEqual([`post-${linked.body.number}`]);
     expect(d.scanned.posts).toBe(2);
   });
+
+  it('handles invalid domain input gracefully with form re-render and inline warning, while normalizing IDN and trailing dots (fixes #214)',async()=>{
+    const res = await page('/sources?domain=https%3A%2F%2Fgithub.com');
+    expect(res.status).toBe(400);
+    const html = await res.text();
+    expect(html).toContain('Type a host only, e.g. github.com');
+    expect(html).toContain('value="https://github.com"');
+    expect(html).toContain('<form class="search-form-big');
+    expect(html).not.toContain('This link has a mistake in it');
+
+    // IDN normalization without 400
+    const idnApi = await api('/v1/sources?domain=b%C3%BCcher.de');
+    expect(idnApi.status).toBe(200);
+    expect(idnApi.body.domain).toBe('xn--bcher-kva.de');
+    const idnPage = await page('/sources?domain=b%C3%BCcher.de');
+    expect(idnPage.status).toBe(200);
+    expect(await idnPage.text()).toContain('value="xn--bcher-kva.de"');
+
+    // Trailing dot normalization without 400
+    const dotApi = await api('/v1/sources?domain=github.com.');
+    expect(dotApi.status).toBe(200);
+    expect(dotApi.body.domain).toBe('github.com');
+    const dotPage = await page('/sources?domain=github.com.');
+    expect(dotPage.status).toBe(200);
+  });
 });

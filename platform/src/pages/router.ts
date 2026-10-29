@@ -584,6 +584,8 @@ async function handlePageInner(request: Request, env: Env, exec: ExecutionContex
     const out = await route.render(p, env, url, m!, session.viewer);
     const html = typeof out === 'string' ? out : out.html;
     const extra = typeof out === 'string' ? {} : out.headers;
+    const status = typeof out === 'object' && out.status ? out.status : 200;
+    const cache = status === 200 ? (route.private || signedIn ? 'private, no-store' : PUBLIC_PAGE_CACHE) : 'no-store';
     // pages with a markdown twin: the same URL answers text/markdown to `Accept: text/markdown`, so caches must key on Accept
     const mdTwin = hasMarkdownTwin(path) ? twinMarkdownPath(url) : null;
     const twin: Record<string, string> = mdTwin ? { vary: 'Accept', link: `<${p.origin}${mdTwin}>; rel="alternate"; type="text/markdown"` } : {};
@@ -591,7 +593,7 @@ async function handlePageInner(request: Request, env: Env, exec: ExecutionContex
     const htmlWithTwin = mdTwin
       ? html.replace(/(<link rel="alternate" type="text\/markdown" href=")[^"]*(" title="Markdown \(for agents\)">)/, `$1${p.origin}${escAttr(mdTwin)}$2`)
       : html;
-    return withSession(done(respond(method, 200, htmlWithTwin, { ...htmlHeaders(env, url, route.private || signedIn ? 'private, no-store' : PUBLIC_PAGE_CACHE), ...twin, ...extra })));
+    return withSession(done(respond(method, status, htmlWithTwin, { ...htmlHeaders(env, url, cache), ...twin, ...extra })));
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     const code = error instanceof HttpError ? error.code : 'internal_error';
