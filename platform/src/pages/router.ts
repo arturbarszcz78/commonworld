@@ -187,6 +187,27 @@ export function pageCacheUrl(url: URL): URL {
   return out;
 }
 
+/** Query string of content-affecting parameters for Markdown twins (#228). */
+export function twinQuery(url: URL): string {
+  const keys = PAGE_CACHE_PARAMS.find(([re]) => re.test(url.pathname))?.[1] ?? [];
+  const parts: string[] = [];
+  for (const k of keys) {
+    let v = (url.searchParams.get(k) ?? '').trim();
+    if (k === 'q') v = normalizeSearchQuery(v);
+    if (v !== '') parts.push(`${k}=${encodeURIComponent(v)}`);
+  }
+  return parts.length ? '?' + parts.join('&') : '';
+}
+
+/** Canonical Markdown twin URL path + content-affecting query parameters (#228). */
+export function twinMarkdownPath(url: URL, basePath?: string): string {
+  const path = basePath ?? url.pathname;
+  const canonical = canonicalTwinPath(path);
+  const base = markdownPath(canonical);
+  const q = twinQuery(url);
+  return base + q;
+}
+
 type Rendered = string | PageOut;
 type Render = (p: PageCtx, env: Env, url: URL, m: RegExpMatchArray, viewer: Viewer | null) => Promise<Rendered> | Rendered;
 interface PageRoute { pattern: RegExp; render: Render; private?: boolean }
@@ -564,8 +585,13 @@ async function handlePageInner(request: Request, env: Env, exec: ExecutionContex
     const html = typeof out === 'string' ? out : out.html;
     const extra = typeof out === 'string' ? {} : out.headers;
     // pages with a markdown twin: the same URL answers text/markdown to `Accept: text/markdown`, so caches must key on Accept
-    const twin: Record<string, string> = hasMarkdownTwin(path) ? { vary: 'Accept', link: `<${p.origin}${markdownPath(canonicalTwinPath(path))}>; rel="alternate"; type="text/markdown"` } : {};
-    return withSession(done(respond(method, 200, html, { ...htmlHeaders(env, url, route.private || signedIn ? 'private, no-store' : PUBLIC_PAGE_CACHE), ...twin, ...extra })));
+    const mdTwin = hasMarkdownTwin(path) ? twinMarkdownPath(url) : null;
+    const twin: Record<string, string> = mdTwin ? { vary: 'Accept', link: `<${p.origin}${mdTwin}>; rel="alternate"; type="text/markdown"` } : {};
+    const escAttr = (s: string) => s.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    const htmlWithTwin = mdTwin
+      ? html.replace(/(<link rel="alternate" type="text\/markdown" href=")[^"]*(" title="Markdown \(for agents\)">)/, `$1${p.origin}${escAttr(mdTwin)}$2`)
+      : html;
+    return withSession(done(respond(method, 200, htmlWithTwin, { ...htmlHeaders(env, url, route.private || signedIn ? 'private, no-store' : PUBLIC_PAGE_CACHE), ...twin, ...extra })));
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     const code = error instanceof HttpError ? error.code : 'internal_error';
