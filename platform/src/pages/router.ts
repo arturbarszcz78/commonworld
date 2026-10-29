@@ -199,7 +199,7 @@ const PAGES: PageRoute[] = [
   { pattern: /^\/sources$/, render: (p, env, url) => sourcesPage(p, env, url) },
   { pattern: /^\/sections$/, render: (p, env) => sectionsPage(p, env) },
   { pattern: /^\/s\/([a-z0-9-]{1,64})$/i, render: (p, env, url, m) => sectionPage(p, env, url, m[1].toLowerCase()) },
-  { pattern: /^\/t\/([a-z0-9-]{1,64})$/, render: (p, env, url, m) => tagPage(p, env, url, m[1]) },
+  { pattern: /^\/t\/([a-z0-9-]{1,64})$/i, render: (p, env, url, m) => tagPage(p, env, url, m[1].toLowerCase()) },
   { pattern: /^\/posts\/(\d{1,15})$/, render: (p, env, url, m) => postPage(p, env, url, m[1]) },
   { pattern: /^\/posts\/(\d{1,15})\/connections$/, render: (p, env, url, m) => connectionsPage(p, env, url, m[1]) },
   { pattern: /^\/posts\/(\d{1,15})\/decisions$/, render: (p, env, url, m) => decisionsPage(p, env, url, m[1]) },
@@ -227,7 +227,7 @@ async function redirectFor(env: Env, path: string): Promise<string | null> {
   let m: RegExpMatchArray | null;
   if ((m = path.match(/^\/(privacy|terms|about)\/?$/))) return ATLAS_PAGE_REDIRECTS[m[1]];
   if ((m = path.match(/^\/sections\/([a-z0-9-]{1,64})\/?$/i))) return `/s/${m[1].toLowerCase()}`;
-  if ((m = path.match(/^\/tags\/([a-z0-9-]{1,64})\/?$/))) return `/t/${m[1]}`;
+  if ((m = path.match(/^\/tags\/([a-z0-9-]{1,64})\/?$/i))) return `/t/${m[1].toLowerCase()}`;
   if ((m = path.match(/^\/citizens\/([^/]{1,96})\/?$/))) return `/c/${m[1]}`;
   if ((m = path.match(/^\/comments\/(\d{1,15})$/))) {
     const post = await commentLocation(env, Number(m[1]));
@@ -554,9 +554,9 @@ async function handlePageInner(request: Request, env: Env, exec: ExecutionContex
       throw new HttpError(404, 'page_not_found');
     }
     // a merged tag's page moves to its target for good
-    const tm = path.match(/^\/t\/([a-z0-9-]{1,64})$/);
+    const tm = path.match(/^\/t\/([a-z0-9-]{1,64})$/i);
     if (tm) {
-      const merged = await env.DB.prepare("SELECT merged_into FROM tags WHERE slug = ? AND status = 'merged'").bind(tm[1]).first<{ merged_into: string }>();
+      const merged = await env.DB.prepare("SELECT merged_into FROM tags WHERE slug = ? AND status = 'merged'").bind(tm[1].toLowerCase()).first<{ merged_into: string }>();
       if (merged) return done(respond(method, 301, '', { location: `/t/${merged.merged_into}${url.search}`, 'cache-control': 'public, max-age=86400' }));
     }
     p = await pageCtx(env, url, session.viewer);
