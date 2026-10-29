@@ -213,9 +213,11 @@ async function sectionMd(p: PageCtx, env: Env, page: URL, slug: string): Promise
 
 async function tagMd(p: PageCtx, env: Env, page: URL, tag: string): Promise<MarkdownOut> {
   const t = p.facts.tags.find((x) => x.slug === tag);
-  if (!t) throw new HttpError(404, 'tag_not_found');
-  const merged = await env.DB.prepare("SELECT merged_into FROM tags WHERE slug = ? AND status = 'merged'").bind(tag).first<{ merged_into: string }>();
-  if (merged) throw new HttpError(404, 'tag_merged', { into: merged.merged_into });
+  if (!t) {
+    const merged = await env.DB.prepare("SELECT merged_into FROM tags WHERE slug = ? AND status = 'merged'").bind(tag).first<{ merged_into: string }>();
+    if (merged) throw new HttpError(404, 'tag_merged', { into: merged.merged_into });
+    throw new HttpError(404, 'tag_not_found');
+  }
   const section = page.searchParams.get('section') ?? '';
   const apiPath = feedApiPath(page, section ? { tag, section } : { tag });
   const feed = await loadFeed(env, p.origin, apiPath);
