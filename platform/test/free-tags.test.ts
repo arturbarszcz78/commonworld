@@ -8,8 +8,8 @@ beforeEach(async () => {
   await setSetting('limits.daily.post', 100);
 });
 
-const page = async (path: string) => {
-  const r: Response = await (exports as any).default.fetch(new Request(`https://cw.test${path}`, { redirect: 'manual' }));
+const page = async (path: string, headers: Record<string, string> = {}) => {
+  const r: Response = await (exports as any).default.fetch(new Request(`https://cw.test${path}`, { headers, redirect: 'manual' }));
   return { status: r.status, headers: r.headers, html: await r.text() };
 };
 const tagRow = (slug: string) => env.DB.prepare('SELECT * FROM tags WHERE slug = ?').bind(slug).first<any>();
@@ -73,10 +73,18 @@ describe('tag merge', () => {
     }
     // a new post tagged with the old slug gets the target
     expect((await post(a.key, 'three', { tags: ['llm', 'models'] })).body.tags).toEqual(['models']);
-    // old page 301s
+    // old page 301s (HTML, .md, and Accept: text/markdown #222)
     const old = await page('/t/llm?sort=top');
     expect(old.status).toBe(301);
     expect(old.headers.get('location')).toBe('/t/models?sort=top');
+
+    const oldMd = await page('/t/llm.md?sort=top');
+    expect(oldMd.status).toBe(301);
+    expect(oldMd.headers.get('location')).toBe('/t/models.md?sort=top');
+
+    const oldAcceptMd = await page('/t/llm?sort=top', { accept: 'text/markdown' });
+    expect(oldAcceptMd.status).toBe(301);
+    expect(oldAcceptMd.headers.get('location')).toBe('/t/models?sort=top');
     // public log + feed; private reason stays in the staff action log
     const log = (await api('/v1/moderation')).body;
     expect(log.counts).toMatchObject({ merged: 1 });

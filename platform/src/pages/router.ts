@@ -674,7 +674,8 @@ async function markdownPage(request: Request, env: Env, exec: ExecutionContext, 
     return res;
   } catch (error) {
     if (error instanceof HttpError && error.code === 'tag_merged') {
-      const moved = respond(method, 301, '', { location: markdownPath(`/t/${String(error.extra.into)}`), 'cache-control': 'public, max-age=86400', vary: 'Accept' });
+      const target = url.pathname.endsWith('.md') ? markdownPath(`/t/${String(error.extra.into)}`) : `/t/${String(error.extra.into)}`;
+      const moved = respond(method, 301, '', { location: `${target}${url.search}`, 'cache-control': 'public, max-age=86400', vary: 'Accept' });
       return versionUnknown ? withoutSharedCache(moved) : moved;
     }
     const status = error instanceof HttpError ? error.status : 500;
