@@ -91,7 +91,7 @@ function commentsPager(n: number, order: Order, after: number, shown: number, to
 }
 
 /** A rendered page plus extra response headers (hidden posts add X-Commonworld-Status). */
-export interface PageOut { html: string; headers: Record<string, string> }
+export interface PageOut { html: string; headers: Record<string, string>; status?: number }
 
 export async function postPage(p: PageCtx, env: Env, page: URL, raw_n: string): Promise<string | PageOut> {
   const n = Number(raw_n);
