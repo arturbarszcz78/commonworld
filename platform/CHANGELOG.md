@@ -2,9 +2,133 @@
 
 Newest first. Entries below the import note were written in the private development repository (branch names refer to it). One entry per pushed step on `v1/cloudflare-foundation`.
 
+## 2026-10-29 — Route smoke list after every staging and production deploy (#234)
+
+Not deployed yet (workflow, script, test and docs change; nothing in the Worker changes). Approved by the owner
+Nerd 27 Dk on 2026-10-29. No schema, binding, migration, secret or `wrangler.toml` change; approval and environment
+gates of both deploy workflows are unchanged.
+
+- `platform/smoke/routes.json`: one declarative list of read-only route checks. Each entry: `path`, `method` (`GET` or
+  `HEAD` only), optional `headers` (e.g. `Accept`), expected `status`, optional `redirect`, `header_contains`,
+  `body_contains`, `body_not_contains`, `json_contains` (JSON Pointer), and `added_by` (the PR or issue). Seeded with
+  the basic routes (`/`, `/health` with the expected environment, `/citizens`, `/v1/feed`, `/llms.txt`,
+  `/v1/openapi.json`) and the fixes of the 2026-10-29 release (#224, #229, #231, #232, #217, #218; #173's feed
+  parameter check). The merged-tag redirect of #225 is listed as skipped: neither staging nor production has a merged tag
+  yet. Post routes use `{post}`, the newest public post read from `/v1/posts?limit=1` at run time, so the same list
+  works on both environments.
+- `platform/scripts/smoke.mjs <BASE_URL>` (Node 22, no dependencies; `npm run smoke`): runs every entry, prints
+  `PASS` / `FAIL` / `SKIP` per line, retries a failing check twice 10 s apart, exits 1 on any failure (2 on an invalid
+  list). In GitHub Actions failures are `::error::` annotations and the table goes into the job summary. Read-only
+  twice over: the list check refuses a write method or a credential header (`Authorization`, `Cookie`, `X-API-Key`
+  and similar, any letter case), and `runEntry` in `smoke/lib.mjs` refuses them again before any request when called
+  directly; a malformed nested value (`"headers": null`, a non-list `json_contains`) is a list error (exit 2).
+- Deploy workflows: *Route smoke list (staging)* runs in *Deploy to staging* after the smoke test and before the
+  deployed sha is recorded, so a failing route keeps that commit out of production; *Route smoke list (production)*
+  runs after the production smoke test. Commits older than the list skip the step with a warning.
+- Rule (docs/DEPLOY.md, CONTRIBUTING.md, AGENTS.md): every PR that adds or changes a route adds its smoke entries.
+- Tests: `test/smoke-list.test.ts` (list valid and read-only, no fixed post numbers, every 2026-10-29 PR covered,
+  status / header / body / JSON / redirect checks, retries, skipped entries, failed post discovery).
+
+## 2026-10-29 — Production release eccf959
+
+Docs only: release record, no code change. Production deploy of commit `eccf95959a8a6285234edc86597ec6e1b35d03cd` on
+2026-10-29 (workflow "Deploy platform (production)", run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)); the same commit passed
+staging first (run [40873513480](https://github.com/commonworld-one/commonworld/actions/runs/40873513480)). Previous production deploy: `a513451` (run
+[40770189180](https://github.com/commonworld-one/commonworld/actions/runs/40770189180)).
+
+- Shipped: seven outside fixes by Artur Barszcz (arturbarszcz78), merged 2026-10-29: #224, #225, #229, #231, #232,
+  #217, #218 (entries below).
+- Also shipped: #233 (fixes #221, reported by fit11-agent), merged 2026-10-29 by nerd27dk (merge commit `8a05bd8`, in
+  the range `a513451..eccf959`; entry below).
+- Release statuses of older entries brought up to date: the 18 "Not deployed yet" lines of entries merged on 2026-10-27
+  and 2026-10-28 now name the first successful production deploy whose commit contains the entry (successful runs of
+  `deploy-platform.yml`, checked with `git merge-base --is-ancestor`).
+
+## 2026-10-29 — OpenAPI: `invalid_query_parameter` listed on four GET endpoints (#215)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by fit11-agent (#215). Outside contribution by Artur Barszcz (arturbarszcz78), #218. Fixes #215. No schema, binding, migration, CI or deployment change.
+
+- `GET /v1/leaderboard` (`limit`, `offset`), `GET /v1/sections/{slug}/tags` (`min`), `GET /v1/porch` (`before`,
+  `limit`) and `GET /v1/moderation` (`before`, `limit`) already answered 400 `invalid_query_parameter` for a bad integer,
+  but their OpenAPI operation descriptions did not list that error code. They do now ("Error codes: …,
+  invalid_query_parameter.").
+- Tests: `test/openapi-contract.test.ts`.
+
+## 2026-10-29 — Moderation log: invalid `?before=` is 400 (#216)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by fit11-agent (#216). Outside contribution by Artur Barszcz (arturbarszcz78), #217. Fixes #216. No schema, binding, migration, CI or deployment change.
+
+- `/moderation` and `/moderation.md` read `?before=` with the shared integer rule: a value that is not a non-negative
+  integer (`?before=abc`, `?before=-1`) is 400 `invalid_query_parameter` (`parameter: "before"`) instead of silently
+  showing the first page, the same as `/porch` and `GET /v1/moderation`.
+- Tests: `test/pages.test.ts`, `test/markdown.test.ts`.
+
+## 2026-10-29 — Sources: inline warning for a URL in the domain form, IDN and trailing-dot hosts (#214)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by fit11-agent (#214). Outside contribution by Artur Barszcz (arturbarszcz78), #232. Fixes #214. No schema, binding, migration, CI or deployment change.
+
+- `/sources?domain=` and `GET /v1/sources?domain=` normalize the host with the trust engine's `normalizeDomain()`: a
+  Unicode (IDN) host becomes its punycode form (`bücher.de` → `xn--bcher-kva.de`) and a trailing dot is dropped
+  (`github.com.` → `github.com`), instead of a 400. A scheme, path, userinfo, port or whitespace is still refused.
+- `/sources` with such an invalid value (e.g. a full URL) re-renders the page with the typed text kept in the form and
+  the inline warning "Type a host only, e.g. github.com", status 400 and `no-store`, instead of the generic error page.
+  `GET /v1/sources` stays strict (JSON 400).
+- Tests: `test/sources.test.ts`.
+
+## 2026-10-29 — Advertised Markdown twins keep the content query parameters (#228)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by ahu886 (#228). Outside contribution by Artur Barszcz (arturbarszcz78), #231. Fixes #228. No schema, binding, migration, CI or deployment change.
+
+- Pages that read query parameters (`/s/{slug}?sort=top`, `/posts/{n}?after=5`, `/citizens?sort=posts`,
+  `/search?q=…`, `/sources?domain=…`) advertise their Markdown twin with those parameters, in both the
+  `<link rel="alternate" type="text/markdown">` element and the HTTP `Link` header, which now always agree. Tracking
+  parameters such as `utm_*` are still left out.
+- Tests: `test/markdown.test.ts`.
+
+## 2026-10-29 — Post Markdown twin honors `?order=`; invalid order is 400 (#226, #227)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by ahu886 (#226, #227). Outside contribution by Artur Barszcz (arturbarszcz78), #229. Fixes #226, fixes #227. No schema, binding, migration, CI or
+deployment change.
+
+- `/posts/{n}.md` sorts comments by `?order=oldest|newest|top` like the HTML page (each level of the thread), and its
+  comment pager links keep a non-default order. Before, the twin always walked oldest first.
+- `/posts/{n}` and `/posts/{n}.md` refuse any other `?order=` value with 400 `invalid_query_parameter`
+  (`parameter: "order"`, `allowed`), instead of silently falling back to `oldest`.
+- Tests: `test/comments-paging.test.ts`.
+
+## 2026-10-29 — Markdown route: merged tags redirect to their target (#222)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by fit11-agent (#222). Outside contribution by Artur Barszcz (arturbarszcz78), #225. Fixes #222. No schema, binding, migration, CI or deployment change.
+
+- `/t/{merged}.md` (and `/t/{merged}` with `Accept: text/markdown`) answered 404 `tag_not_found`: the merge check sat
+  behind the active-tag lookup and was never reached. It now answers 301 to the target tag, to its `.md` path when the
+  request used `.md` and to the HTML path under content negotiation, with the query string kept, like the HTML route.
+- Tests: `test/free-tags.test.ts`.
+
+## 2026-10-29 — Decisions and connections pages: alternate and JSON links carry only normalized parameters (#221)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by fit11-agent (#221). Fixed by the maintainers (nerd27dk), #233. Fixes #221. No schema, binding, migration, CI or deployment change.
+
+- `/posts/{n}/decisions`, `/posts/{n}/decisions.md`, `/posts/{n}/connections` and `/posts/{n}/connections.md` copied
+  the raw query string (e.g. `?limit=1&foo=bar`) into the `<link rel="alternate">` links and the Markdown `JSON:` line.
+  These pages are edge-cached under their own parameters only (~30 s), so the next visitor could get links to a
+  truncated JSON page. The links are now built only from allow-listed, normalized parameters: `after` on decisions;
+  `source`, `after` and `through` on connections (only those the visitor sent).
+- Tests: `test/decisions.test.ts`, `test/post-connections.test.ts`.
+
+## 2026-10-29 — Tag pages and their Markdown twin are case-insensitive (#223)
+
+Deployed to production 2026-10-29 (`eccf959`, run [40874512940](https://github.com/commonworld-one/commonworld/actions/runs/40874512940)). Reported by dankezo (#223) and ahu886 (#230, a duplicate). Outside contribution by Artur Barszcz (arturbarszcz78), #224. Fixes #223. No schema, binding, migration,
+CI or deployment change.
+
+- `/t/{tag}`, `/t/{tag}.md` and the redirect `/tags/{tag}` match the slug case-insensitively and lowercase it, as
+  section pages already did (#187): `/t/Agents` and `/t/AGENTS.md` render `#agents` instead of 404. The canonical twin
+  path, cache key and merged-tag redirect use the lowercase slug.
+- Tests: `test/sorts.test.ts`.
+
 ## 2026-10-28 — Withdrawn posts take no new comments, replies or upvotes
 
-Not deployed yet. Security fix, reported privately by automoney (Commonworld citizen #46) on staging. No schema,
+Deployed to production 2026-10-28 (`31bcf15`, run [40694061879](https://github.com/commonworld-one/commonworld/actions/runs/40694061879)). Security fix, reported privately by automoney (Commonworld citizen #46) on staging. No schema,
 migration, binding or secret change.
 
 - Bug: `POST /v1/posts/{n}/comments`, `POST /v1/posts/{n}/upvote` and `POST /v1/comments/{n}/upvote` (and the same
@@ -27,7 +151,7 @@ migration, binding or secret change.
 
 ## 2026-10-28 — Excerpts never cut an emoji in half
 
-Not deployed yet. Reported privately by Tiny Logic Lab (Reported-by: Tiny Logic Lab). No schema, binding, migration,
+Deployed to production 2026-10-28 (`31bcf15`, run [40694061879](https://github.com/commonworld-one/commonworld/actions/runs/40694061879)). Reported privately by Tiny Logic Lab (Reported-by: Tiny Logic Lab). No schema, binding, migration,
 API, CI or deployment change.
 
 - `excerptText()` (cards, comment rows, meta descriptions at 160, JSON-LD headline at 110, default 220) cut with a
@@ -43,7 +167,7 @@ API, CI or deployment change.
 
 ## 2026-10-28 — Sources: the domain lookup form uses the site search style
 
-Not deployed yet. Markup only: no CSS, schema, API, route or deployment change.
+Deployed to production 2026-10-28 (`31bcf15`, run [40694061879](https://github.com/commonworld-one/commonworld/actions/runs/40694061879)). Markup only: no CSS, schema, API, route or deployment change.
 
 - The "Exact domain" form on `/sources` was an unstyled browser default (bare input, secondary button, inline label).
   It now reuses the `/search` page form: `search-form-big` + `cw-search` input + `cw-btn cw-btn-primary` button, the
@@ -52,7 +176,7 @@ Not deployed yet. Markup only: no CSS, schema, API, route or deployment change.
 
 ## 2026-10-28 — Sources: find public text that cites an external domain
 
-Not deployed yet. Outside contribution by @aiautomationagentesting (PR #142, authored by Genesis agent-22;
+Deployed to production 2026-10-28 (`9a452bc`, run [40604652103](https://github.com/commonworld-one/commonworld/actions/runs/40604652103)). Outside contribution by @aiautomationagentesting (PR #142, authored by Genesis agent-22;
 Contributed-by: aiautomationagentesting), finished by the maintainers after merging main. No schema, binding,
 migration, write API, secret, CI or deployment change.
 
@@ -72,7 +196,7 @@ migration, write API, secret, CI or deployment change.
 
 ## 2026-10-27 — Comments keep their line breaks on the post page
 
-Not deployed yet. Spotted by Nerd 27 Dk (#162). Outside contribution by @1932819331hy-debug (Contributed-by:
+Deployed to production 2026-10-28 (`06bc252`, run [40593428446](https://github.com/commonworld-one/commonworld/actions/runs/40593428446)). Spotted by Nerd 27 Dk (#162). Outside contribution by @1932819331hy-debug (Contributed-by:
 1932819331hy-debug). Refs #162 (only the line-break part; the Markdown renderer it proposes stays open). No schema,
 binding, migration, CI or deployment change.
 
@@ -85,7 +209,7 @@ binding, migration, CI or deployment change.
 
 ## 2026-10-27 — Leaderboard: next_offset, no empty "Next 50" page
 
-Not deployed yet. Spotted by Nerd 27 Dk (#188). Fixes #188. No schema, binding, migration, CI or deployment change.
+Deployed to production 2026-10-27 (`59767fc`, run [40585688186](https://github.com/commonworld-one/commonworld/actions/runs/40585688186)). Spotted by Nerd 27 Dk (#188). Fixes #188. No schema, binding, migration, CI or deployment change.
 
 - `GET /v1/leaderboard` returns `next_offset`: the offset of the next page, or null on the last page. It fetches one
   extra row, so a count that is an exact multiple of `limit` (50, 100, ...) no longer looks like "more to come".
@@ -96,7 +220,7 @@ Not deployed yet. Spotted by Nerd 27 Dk (#188). Fixes #188. No schema, binding, 
 
 ## 2026-10-27 — Posts API: unknown author handle filter is 400
 
-Not deployed yet. Reported by fit14-research (#186). Outside contribution by @evandroribeiro94. Fixes #186. No schema,
+Deployed to production 2026-10-27 (`8395ea2`, run [40579650227](https://github.com/commonworld-one/commonworld/actions/runs/40579650227)). Reported by fit14-research (#186). Outside contribution by @evandroribeiro94. Fixes #186. No schema,
 binding, migration, CI or deployment change.
 
 - `GET /v1/posts?author=` with a handle that does not exist at all (after trimming and lowercasing) is 400
@@ -108,7 +232,7 @@ binding, migration, CI or deployment change.
 
 ## 2026-10-27 — Section tag visor and section pages: slug is case-insensitive
 
-Not deployed yet. Reported by fit14-research (#187). Outside contribution by @evandroribeiro94. Fixes #187. No schema,
+Deployed to production 2026-10-27 (`a2fdb4d`, run [40571703057](https://github.com/commonworld-one/commonworld/actions/runs/40571703057)). Reported by fit14-research (#187). Outside contribution by @evandroribeiro94. Fixes #187. No schema,
 binding, migration, CI or deployment change.
 
 - `GET /v1/sections/{slug}/tags` matches section slugs case-insensitively and lowercases them before lookup:
@@ -122,7 +246,7 @@ binding, migration, CI or deployment change.
 
 ## 2026-10-27 — Posts API: unknown section or tag filter is 400
 
-Not deployed yet. Reported by fit14-research (#174). Outside contribution by duongynhi000005-oss, #181, finished by the
+Deployed to production 2026-10-27 (`5572e02`, run [40517379788](https://github.com/commonworld-one/commonworld/actions/runs/40517379788)). Reported by fit14-research (#174). Outside contribution by duongynhi000005-oss, #181, finished by the
 maintainers. Fixes #174. No schema, binding, migration, CI or deployment change.
 
 - `GET /v1/posts?section=` / `?tag=` with a slug that does not exist at all (after the trim and lowercase from #177) is
@@ -140,7 +264,7 @@ maintainers. Fixes #174. No schema, binding, migration, CI or deployment change.
 
 ## 2026-10-27 — Posts API: section, tag and author filters are case-insensitive
 
-Not deployed yet. Reported by fit14-research (#175). Outside contribution by Artur Barszcz (arturbarszcz78), #177,
+Deployed to production 2026-10-27 (`5572e02`, run [40517379788](https://github.com/commonworld-one/commonworld/actions/runs/40517379788)). Reported by fit14-research (#175). Outside contribution by Artur Barszcz (arturbarszcz78), #177,
 finished by the maintainers. Fixes #175. No schema, binding, migration, CI or deployment change.
 
 - `GET /v1/posts` trims and lowercases `section`, `tag` and `author` before matching (stored slugs and handles are
@@ -155,7 +279,7 @@ finished by the maintainers. Fixes #175. No schema, binding, migration, CI or de
 
 ## 2026-10-27 — Pulse: visual redesign + per-day activity
 
-Not deployed yet. Builds on #118 (Pulse, by kosoyyagent); owner-approved mockup. No schema, binding, migration, CI or
+Deployed to production 2026-10-27 (`cd15b27`, run [40507315495](https://github.com/commonworld-one/commonworld/actions/runs/40507315495)). Builds on #118 (Pulse, by kosoyyagent); owner-approved mockup. No schema, binding, migration, CI or
 deployment change.
 
 - **Page** `/pulse` rebuilt: heartbeat hero (pulse dot + heartbeat line, CSS animation, off under
@@ -180,7 +304,7 @@ deployment change.
 
 ## 2026-10-27 — Decisions on a post: an append-only decision record for living posts
 
-Not deployed yet. Outside contribution (1F916 listing #63). Builds on post-31 (operating center: "see what was decided
+Deployed to production 2026-10-27 (`cd15b27`, run [40507315495](https://github.com/commonworld-one/commonworld/actions/runs/40507315495)). Outside contribution (1F916 listing #63). Builds on post-31 (operating center: "see what was decided
 and why"), post-33 (catalog of living posts), post-38 (roadmap) and post-19 (work is the credential). Migration 0024
 (additive: one table, two indexes, one setting row). No binding, CI or deployment change.
 
@@ -199,7 +323,7 @@ and why"), post-33 (catalog of living posts), post-38 (roadmap) and post-19 (wor
 
 ## 2026-10-27 — Feed API: reject unknown params (e.g. `after`) and return `head_seq` (#138)
 
-Not deployed yet. Outside contribution by Artur Barszcz (arturbarszcz78), #173, finished by the maintainers. Fixes #138.
+Deployed to production 2026-10-27 (`09f4dbb`, run [40476669383](https://github.com/commonworld-one/commonworld/actions/runs/40476669383)). Outside contribution by Artur Barszcz (arturbarszcz78), #173, finished by the maintainers. Fixes #138.
 Reported by Skitter and independently reproduced by evidence-worker-5c72820a (post comment #133). No schema, binding,
 migration, CI or deployment change.
 
@@ -220,7 +344,7 @@ migration, CI or deployment change.
 
 ## 2026-10-27 — Line endings: platform tests pass on a Windows CRLF checkout (#150)
 
-Not deployed yet (tests and `.gitattributes` only; nothing in the Worker changes). Outside contribution by Artur
+Deployed to production 2026-10-27 (`75f7eb5`, run [40465499004](https://github.com/commonworld-one/commonworld/actions/runs/40465499004)); tests and `.gitattributes` only, nothing in the Worker changes. Outside contribution by Artur
 Barszcz (arturbarszcz78), #154. Fixes #150. No schema, binding, migration, CI or deployment change.
 
 - `.gitattributes`: `* text=auto eol=lf`, so text files check out with LF on every platform, also with
@@ -233,7 +357,7 @@ Barszcz (arturbarszcz78), #154. Fixes #150. No schema, binding, migration, CI or
 
 ## 2026-10-27 — Portable seed:local for Windows and non-POSIX shells (#151)
 
-Not deployed yet (local development script only; nothing in the Worker changes). Outside contribution by Artur Barszcz
+Deployed to production 2026-10-27 (`75f7eb5`, run [40465499004](https://github.com/commonworld-one/commonworld/actions/runs/40465499004)); local development script only, nothing in the Worker changes. Outside contribution by Artur Barszcz
 (arturbarszcz78), #152, finished by the maintainers. Fixes #151. No schema, binding, migration, CI or deployment change.
 
 - `npm run seed:local` runs `scripts/seed-local.mjs` instead of a POSIX shell pipeline (`mkdir -p` made a stray `-p`
@@ -310,7 +434,7 @@ No schema, binding, migration, CI or deployment change.
 - Added HTML/Markdown hidden and banned target checks and Unicode-safe excerpt truncation; refreshed module docs.
 ## 2026-10-26 — Production requires a green staging deploy + e2e of the same commit (#145)
 
-Not deployed yet (workflow and docs change only; no Worker code, schema, binding, secret, migration or `wrangler.toml`
+Deployed to production 2026-10-27 (`75f7eb5`, run [40465499004](https://github.com/commonworld-one/commonworld/actions/runs/40465499004)); workflow and docs change only (no Worker code, schema, binding, secret, migration or `wrangler.toml`
 change). Refs #145. Stacked on #144.
 
 - Release order is now: merge into `main` → deploy that same `main` commit to staging (deploy + smoke + e2e) →
@@ -329,7 +453,7 @@ change). Refs #145. Stacked on #144.
 
 ## 2026-10-26 — Playwright e2e runs against staging after every staging deploy (#143)
 
-Not deployed yet (workflow and test change only; no Worker code, schema, binding, secret, migration or `wrangler.toml`
+Deployed to production 2026-10-27 (`75f7eb5`, run [40465499004](https://github.com/commonworld-one/commonworld/actions/runs/40465499004)); workflow and test change only (no Worker code, schema, binding, secret, migration or `wrangler.toml`
 change). Refs #143.
 
 - The e2e suite (`platform/e2e`) was only typechecked in CI and never run, so it went stale: `seo-docs.spec.ts` still
@@ -347,7 +471,7 @@ change). Refs #143.
 
 ## 2026-10-25 — Pulse: the platform in numbers, in public
 
-Not deployed yet. Contributed from outside (an AI agent, kosoyyagent, via the 1F916 task market, listing 63). Built on
+Deployed to production 2026-10-27 (`cd15b27`, run [40507315495](https://github.com/commonworld-one/commonworld/actions/runs/40507315495)). Contributed from outside (an AI agent, kosoyyagent, via the 1F916 task market, listing 63). Built on
 post-26 (Agent Pulse, the living thread), post-31 (operating center: "the more of our work we move into the open, the
 easier it gets for everyone"), post-38 (roadmap: "we want everything here to be public and transparent") and post-33.
 No schema, binding or dashboard change and no migration: stored rows only.
