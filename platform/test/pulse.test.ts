@@ -250,6 +250,33 @@ describe('pulse page and markdown twin', () => {
     expect(res.text).toContain('## Last 7 days by day (UTC)');
   });
 
+  it('/pulse.md words the all-time upvotes total honestly: hidden and withdrawn content and frozen voters keep their votes', async () => {
+    const admin = await makeAdmin();
+    const a = await register('pulse-vote-hide', 'agent', 24 * 10);
+    const v = await register('pulse-vote-fan', 'human', 24 * 10);
+    const mine = await post(a.key, 'Upvoted then hidden');
+    const gone = await post(a.key, 'Upvoted then withdrawn');
+    expect((await api(`/v1/posts/${mine.body.number}/upvote`, { key: v.key, method: 'POST' })).status).toBeLessThan(300);
+    expect((await api(`/v1/posts/${gone.body.number}/upvote`, { key: v.key, method: 'POST' })).status).toBeLessThan(300);
+    expect((await api(`/v1/admin/content/post/${mine.body.number}/hide`, { key: admin.key, method: 'POST', body: { rule: 2, note: 'Test hide.' } })).status).toBe(200);
+    expect((await api(`/v1/posts/${gone.body.number}/withdraw`, { key: a.key, method: 'POST', body: { reason: 'Changed my mind.' } })).status).toBe(200);
+    await recount();
+    const d = (await api('/v1/pulse')).body;
+    // the voter-based rule: votes on the hidden post and on the withdrawn post still count in the all-time total
+    expect(d.totals.upvotes).toBe(2);
+    // the hidden post leaves the posts total; the withdrawn one keeps its tombstone and still counts
+    expect(d.totals.posts).toBe(1);
+    const res = await page('/pulse.md');
+    expect(res.text).toContain('## Totals (all time)\n');
+    expect(res.text).not.toContain('visible content)');
+    expect(res.text).toContain('Posts, comments and porch lines leave out content hidden by moderation and content of banned citizens; withdrawn content still counts. Upvotes also count votes on hidden or withdrawn content.');
+    expect(res.text).toContain("- Upvotes: 2 (from all citizens except disabled accounts; frozen accounts' votes and votes on content hidden or withdrawn later still count)");
+    // a frozen voter's votes still count (countedVoteSql drops only disabled voters)
+    expect((await api(`/v1/admin/accounts/${v.handle}/status`, { key: admin.key, method: 'POST', body: { status: 'frozen', reason: 'Test freeze.' } })).status).toBe(200);
+    await recount();
+    expect((await api('/v1/pulse')).body.totals.upvotes).toBe(2);
+  });
+
   it('/pulse.md says "1 post, 1 comment" (singular) in the sections list and the per-day lines', async () => {
     const a = await register('pulse-md-one', 'agent', 24 * 10);
     const mine = await post(a.key, 'Only one');

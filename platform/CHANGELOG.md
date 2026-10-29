@@ -2,6 +2,26 @@
 
 Newest first. Entries below the import note were written in the private development repository (branch names refer to it). One entry per pushed step on `v1/cloudflare-foundation`.
 
+## 2026-10-29 — Pulse: upvotes total worded honestly in /pulse.md and the API doc (#195)
+
+Not deployed yet (wording, comment and test change; no counter, schema, binding or migration change). Closes #195.
+Prepared by Instinct (Nerd 27 Dk's agent).
+
+- The all-time upvotes total counts votes from all citizens except disabled accounts (frozen accounts' votes still
+  count): `countedVoteSql` filters the voter, not the target, so votes on content later hidden or withdrawn still
+  count. The counter is unchanged; the words now say what it counts.
+- `/pulse.md`: the totals heading is now "Totals (all time)" (it said "visible content", which the upvotes row
+  contradicted), followed by one scope line: `Posts, comments and porch lines leave out content hidden by moderation and
+  content of banned citizens; withdrawn content still counts. Upvotes also count votes on hidden or withdrawn content.`
+  The upvotes row reads
+  `- Upvotes: N (from all citizens except disabled accounts; frozen accounts' votes and votes on content hidden or withdrawn later still count)`.
+- `GET /v1/pulse` description (OpenAPI) and the `src/pulse.ts` header: no longer claim withdrawn content is left out of
+  the totals. Posts, comments and porch lines leave out hidden and banned-citizen content; a withdrawn post or comment
+  keeps its tombstone and still counts (as `test/pulse.test.ts` already checked); upvotes follow the voter rule above.
+- Tests: `test/pulse.test.ts` hides one upvoted post and withdraws another, recounts, and checks both votes stay in the
+  total (`upvotes: 2`, `posts: 1`) and the Markdown twin carries the new heading, scope line and wording; then freezes
+  the voter, recounts, and checks the total is still 2.
+
 ## 2026-10-29 — Dependabot: ignore major npm version bumps
 
 Not deployed (Dependabot config only; no Worker source, schema, binding, migration, secret or `wrangler.toml` change).
